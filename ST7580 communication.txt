@@ -1,0 +1,311 @@
+import threading
+import time
+from tkinter import *
+from tkinter import ttk
+import sys
+import serial
+import serial.tools.list_ports
+
+
+window = Tk()
+window.title(" ST7580 ")
+global x, ifcomopen
+global ifcomopen
+ifcomopen = False
+threadLife = True
+global DL
+global PHY
+DL = True
+PHY = False
+PHYFRAME = [0x02, 0x02, 0x08, 0x00, 0x0A, 0x00]
+DLFRAME = [0x02, 0x02, 0x08, 0x00, 0x01, 0x0B, 0x00]
+CommandCode = 0x00
+
+outputText = Text(window, width=50, height=20)
+outputText.pack(side="left")
+outputText.place(x=30, y=230)
+outputText.config(state="disabled")
+
+
+def printNew(s=''):
+    outputText.config(state="normal")
+    outputText.delete("1.0", 'end')
+    outputText.insert("1.0", s+'\n')
+    outputText.config(state="disabled")
+
+
+def printNewWithOld(s=''):
+    outputText.config(state="normal")
+    s2 = outputText.get("1.0", "end")+s
+    outputText.delete("1.0", 'end')
+    outputText.insert("1.0", s2)
+    outputText.config(state="disabled")
+
+
+def beforesend():
+    ser.setRTS(True)
+    ser.setDTR(True)
+    time.sleep(0.01)
+
+
+def aftersend():
+    ser.setRTS(False)
+    ser.setDTR(True)
+
+
+def serial_ports():
+    comlist = list(serial.tools.list_ports.comports())
+    connected = []
+    for element in comlist:
+        connected.append(element.device)
+    return connected
+
+
+def quit():
+    global threadLife, ifcomopen
+    ifcomopen = False
+    threadLife = False
+    sys.exit()
+
+
+def closeCom():
+    try:
+        global ser, ifcomopen
+        ifcomopen = False
+        time.sleep(0.1)
+        ser.close()
+        RestartButton.config(state='disabled')
+        CloseButton.config(state='disabled')
+        SendButton.config(state='disabled')
+        dlcheck.config(state="disabled")
+        phycheck.config(state="disabled")
+        pskQcheck.config(state="disabled")
+        psk8check.config(state="disabled")
+        pskBcheck.config(state="disabled")
+        CodedCheck.config(state="disabled")
+    except IOError:
+        printNew("Error")
+
+
+def reset():
+    framereset = [0x02, 0x00, 0x3c, 0x3c, 0x00]
+    beforesend()
+    ser.write(bytes(framereset))
+    aftersend()
+    trybDL()
+
+
+
+def openCom():
+    try:
+        global ser, ifcomopen, var1, CommandCode
+        com = comboBox.get()
+        ser = serial.Serial(com,
+                        57000,
+                        bytesize=serial.EIGHTBITS,
+                        parity=serial.PARITY_NONE,
+                        stopbits=serial.STOPBITS_ONE,
+                        timeout=0)
+        SendButton.config(state='normal')
+        RestartButton.config(state='normal')
+        CloseButton.config(state='normal')
+        dlcheck.config(state="normal")
+        phycheck.config(state="normal")
+        dlcheck.select()
+        dlcheck.config(state="disabled")
+        ifcomopen = True
+        CommandCode = 0x50
+        pskQcheck.config(state="normal")
+        psk8check.config(state="normal")
+        pskBcheck.config(state="normal")
+        CodedCheck.config(state="normal")
+        pskBcheck.select()
+        trybpskB()
+        printNew("Connected")
+        return ser
+    except IOError:
+        printNew("Com in use!")
+
+
+def trybPHY():
+    global PHY, DL, CommandCode
+    dlcheck.config(state="normal")
+    dlcheck.deselect()
+    phycheck.select()
+    phycheck.config(state="disabled")
+    beforesend()
+    ser.write(bytes(DLFRAME))
+    aftersend()
+    PHY = True
+    DL = False
+    CommandCode = 0x24
+
+
+def trybDL():
+    global PHY, DL, CommandCode
+    phycheck.config(state="normal")
+    phycheck.deselect()
+    dlcheck.select()
+    dlcheck.config(state="disabled")
+    beforesend()
+    ser.write(bytes(DLFRAME))
+    aftersend()
+    PHY = False
+    DL = True
+    CommandCode = 0x50
+
+
+TextField = Entry(window)
+
+TextField.place(x=180, y=185)
+
+dlcheck = Checkbutton(window, text="DL", offvalue=0, onvalue=1, command=trybDL)
+phycheck = Checkbutton(window, text="PHY", offvalue=0, onvalue=1, command=trybPHY)
+
+psk8 = IntVar()
+pskB = IntVar()
+pskQ = IntVar()
+coded = IntVar()
+
+
+def trybpsk8():
+    pskBcheck.config(state="normal")
+    pskQcheck.config(state="normal")
+    pskBcheck.deselect()
+    pskQcheck.deselect()
+    psk8check.config(state="disabled")
+
+def trybpskQ():
+    pskBcheck.config(state="normal")
+    psk8check.config(state="normal")
+    pskBcheck.deselect()
+    psk8check.deselect()
+    pskQcheck.config(state="disabled")
+
+def trybpskB():
+    psk8check.config(state="normal")
+    pskQcheck.config(state="normal")
+    psk8check.deselect()
+    pskQcheck.deselect()
+    pskBcheck.config(state="disabled")
+
+psk8check = Checkbutton(window, text="8PSK", variable=psk8, offvalue=0, onvalue=1, command=trybpsk8)
+pskQcheck = Checkbutton(window, text="QPSK", variable=pskQ, offvalue=0, onvalue=1, command=trybpskQ)
+pskBcheck = Checkbutton(window, text="BPSK", variable=pskB, offvalue=0, onvalue=1, command=trybpskB)
+CodedCheck = Checkbutton(window, text="Coded", variable=coded, offvalue=0, onvalue=1)
+
+
+dlcheck.place(x=60, y=80)
+phycheck.place(x=60, y=100)
+psk8check.place(x=110, y=80)
+pskQcheck.place(x=110, y=100)
+pskBcheck.place(x=110, y=120)
+CodedCheck.place(x=110, y=140)
+dlcheck.config(state="disabled")
+phycheck.config(state="disabled")
+pskQcheck.config(state="disabled")
+psk8check.config(state="disabled")
+pskBcheck.config(state="disabled")
+CodedCheck.config(state="disabled")
+
+
+def listening():
+    global ser
+    while(threadLife):
+       while(ifcomopen):
+            seq = bytearray()
+            time.sleep(0.1)
+            nr = ser.inWaiting()
+            if nr:
+                st = ser.read(nr)
+                for i in range(0, len(st)):
+                    seq.append(st[i])
+                printNewWithOld(seq.hex())
+
+
+x = threading.Thread(target=listening)
+x.start()
+
+
+def makeFrame(cc=0, s=[]):
+    t = [0x02]
+    t.append(len(s))
+    t.append(cc)
+    t.extend(s)
+    suma = 0x0000
+    for i in range(1, len(t)):
+        suma += t[i]
+    firstFCSbyte = suma & 0xFF
+    secondFCSbyte = suma >> 8
+    t.append(firstFCSbyte)
+    t.append(secondFCSbyte)
+    return t
+
+
+def send():
+    command = []
+    if(coded.get()==1):
+        if(pskB.get()==1):
+            command = [0x44]
+        if(pskQ.get()==1):
+            command = [0x54]
+        if(psk8.get()==1):
+            command = [0x64]
+    else:
+        if(pskB.get()==1):
+            command = [0x04]
+        if(pskQ.get()==1):
+            command = [0x14]
+        if(psk8.get()==1):
+            command = [0x24]
+
+    s = TextField.get()
+    for i in range(0, len(s)):
+        command.append(ord(s[i]))
+    try:
+        global ser
+        if ifcomopen:
+            TextField.delete(0, 'end')
+            beforesend()
+            ser.write(bytes(makeFrame(CommandCode, command)))
+            aftersend()
+            time.sleep(0.1)
+        else:
+            printNew("com not open")
+
+    except IOError:
+        printNew("Error")
+
+
+# set up the window size and position
+screen_width = window.winfo_screenwidth()
+screen_height = window.winfo_screenheight()
+window_width = 600
+window_height = 600
+window_position_x = screen_width/2 - window_width/2
+window_position_y = screen_height/2 - window_height/2
+window.geometry('%dx%d+%d+%d' % (window_width, window_height, window_position_x, window_position_y))
+
+# Buttons and TextFields
+coms = serial_ports()
+comboBox = ttk.Combobox(window, values=coms)
+comboBox.place(x=60, y=10)
+OpenButton = Button(window, width=15, height=1, text='Open', command=openCom)
+OpenButton.place(x=60, y=36)
+CloseButton = Button(window, width=15, height=1, text='Close', command=closeCom)
+CloseButton.place(x=180, y=36)
+CloseButton.config(state='disabled')
+RestartButton = Button(window, width=15, height=1, text='Restart', command=reset)
+RestartButton.place(x=300, y=36)
+RestartButton.config(state='disabled');
+QuitButton = Button(window, width=15, height=1, text='Quit Application', command=quit)
+QuitButton.place(x=420, y=36)
+SendButton = Button(window, width=15, height=1, text='Send message:', command=send)
+SendButton.place(x=60, y=180)
+SendButton.config(state='disabled')
+
+window.mainloop()
+
+
+
+
